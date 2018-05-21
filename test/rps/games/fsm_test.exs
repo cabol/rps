@@ -5,7 +5,7 @@ defmodule Rps.Games.FsmTest do
   alias Rps.Accounts.User
   alias Rps.Games.Match
   alias Rps.Games.Fsm
-  alias Rps.Games.Fsm.Supervisor, as: FsmSupervisor
+  #alias Rps.Games.Fsm.Supervisor, as: FsmSupervisor
 
   setup do
     users = [
@@ -23,11 +23,22 @@ defmodule Rps.Games.FsmTest do
   end
 
   test "new game", %{user1: user1, user2: user2} do
-    match = Repo.insert! %Match{player1_id: user1.id, player2_id: user2.id}
-    {:ok, _pid} = FsmSupervisor.start_child(match.id, match_rounds: 9, round_timeout: 10)
+    # start errors
+    {:error, :match_not_found} = Fsm.start_link(-1)
+    match = Repo.insert! %Match{}
+    {:error, :missing_player1} = Fsm.start_link(match.id)
+
+    # start game
+    match = Repo.insert! %Match{player1_id: user1.id}
+    {:ok, _pid} = Fsm.start_link(match.id, match_rounds: 9, round_timeout: 10)
     refute match.winner
 
-    assert {:error, :invalid_player} == Fsm.move match.id, 3, "paper"
+    # join second player and start playing
+    assert {:error, :invalid_player} = Fsm.join(match.id, -1)
+    assert {:ok, match} = Fsm.join(match.id, user2.id)
+
+    # errors while playing
+    assert {:error, {:invalid_player, -1}} == Fsm.move match.id, -1, "paper"
     assert {:error, {:invalid_move, "other"}} == Fsm.move match.id, user1.id, "other"
 
     # test all combinations
@@ -51,12 +62,13 @@ defmodule Rps.Games.FsmTest do
     assert {:ok, "scissors"} == Fsm.move match.id, user1.id, "scissors"
     assert {:ok, "scissors"} == Fsm.move match.id, user2.id, "scissors"
 
-    assert_raise KeyError, "key #{match.id} not found in: Rps.Cache", fn ->
-      Fsm.move match.id, user1.id, "rock"
-    end
+    # game should have finished
+    assert {:error, :invalid_match} = Fsm.move match.id, user1.id, "rock"
 
-    assert {:error, :normal} == FsmSupervisor.start_child(match.id)
+    # error resuming a finished game
+    assert {:error, :normal} == Fsm.start_link(match.id)
 
+    # check results
     match = Rps.Games.get_match_with_rounds match.id
     assert "draw" == match.winner
     assert 3 == match.player1_wins
@@ -66,7 +78,9 @@ defmodule Rps.Games.FsmTest do
 
   test "default game with timeouts", %{user1: user1, user2: user2} do
     match = Repo.insert! %Match{player1_id: user1.id, player2_id: user2.id}
-    {:ok, _pid} = FsmSupervisor.start_child(match.id, match_rounds: 5, round_timeout: 10)
+
+    {:ok, _pid} = Fsm.start_link(match.id, match_rounds: 5, round_timeout: 10)
+    assert {:ok, match} = Fsm.join(match.id, user2.id)
 
     :ok = :timer.sleep(1000)
 
@@ -77,7 +91,9 @@ defmodule Rps.Games.FsmTest do
 
   test "game with some timeouts", %{user1: user1, user2: user2} do
     match = Repo.insert! %Match{player1_id: user1.id, player2_id: user2.id}
-    {:ok, _pid} = FsmSupervisor.start_child(match.id, match_rounds: 5, round_timeout: 200)
+
+    {:ok, _pid} = Fsm.start_link(match.id, match_rounds: 5, round_timeout: 200)
+    assert {:ok, match} = Fsm.join(match.id, user2.id)
 
     assert {:ok, "paper"} == Fsm.move match.id, user1.id, "paper"
     assert {:ok, "scissors"} == Fsm.move match.id, user2.id, "scissors"
@@ -97,7 +113,10 @@ defmodule Rps.Games.FsmTest do
 
   test "match info during the game", %{user1: user1, user2: user2} do
     match = Repo.insert! %Match{player1_id: user1.id, player2_id: user2.id}
-    {:ok, _pid} = FsmSupervisor.start_child(match.id, match_rounds: 3, round_timeout: 1000)
+
+    {:ok, _pid} = Fsm.start_link(match.id, match_rounds: 3, round_timeout: 1000)
+    %{match: _, rounds: _} = Fsm.info(match.id)
+    assert {:ok, match} = Fsm.join(match.id, user2.id)
 
     :ok = :timer.sleep(1100)
     %{match: _, rounds: _} = Fsm.info(match.id)

@@ -18,10 +18,6 @@ defmodule Rps.Games.Fsm.Supervisor do
   Starts a new FSM as part of this supervision tree.
   """
   def start_child(match_id, opts \\ []) do
-    opts =
-      :rps
-      |> Application.get_env(Fsm, [])
-      |> Keyword.merge(opts)
     Supervisor.start_child(__MODULE__, [match_id, opts])
   end
 
