@@ -29,13 +29,9 @@ defmodule Rps.Games.FsmTest do
     {:error, :missing_player1} = Fsm.start_link(match.id)
 
     # start game
-    match = Repo.insert! %Match{player1_id: user1.id}
+    match = Repo.insert! %Match{player1_id: user1.id, player2_id: user2.id}
     {:ok, _pid} = Fsm.start_link(match.id, match_rounds: 9, round_timeout: 10)
     refute match.winner
-
-    # join second player and start playing
-    assert {:error, :invalid_player} = Fsm.join(match.id, -1)
-    assert {:ok, match} = Fsm.join(match.id, user2.id)
 
     # errors while playing
     assert {:error, {:invalid_player, -1}} == Fsm.move match.id, -1, "paper"
@@ -66,7 +62,7 @@ defmodule Rps.Games.FsmTest do
     assert {:error, :invalid_match} = Fsm.move match.id, user1.id, "rock"
 
     # error resuming a finished game
-    assert {:error, :normal} == Fsm.start_link(match.id)
+    assert {:error, :game_over} == Fsm.start_link(match.id)
 
     # check results
     match = Rps.Games.get_match_with_rounds match.id
@@ -80,7 +76,6 @@ defmodule Rps.Games.FsmTest do
     match = Repo.insert! %Match{player1_id: user1.id, player2_id: user2.id}
 
     {:ok, _pid} = Fsm.start_link(match.id, match_rounds: 5, round_timeout: 10)
-    assert {:ok, match} = Fsm.join(match.id, user2.id)
 
     :ok = :timer.sleep(1000)
 
@@ -93,7 +88,6 @@ defmodule Rps.Games.FsmTest do
     match = Repo.insert! %Match{player1_id: user1.id, player2_id: user2.id}
 
     {:ok, _pid} = Fsm.start_link(match.id, match_rounds: 5, round_timeout: 200)
-    assert {:ok, match} = Fsm.join(match.id, user2.id)
 
     assert {:ok, "paper"} == Fsm.move match.id, user1.id, "paper"
     assert {:ok, "scissors"} == Fsm.move match.id, user2.id, "scissors"
@@ -114,12 +108,14 @@ defmodule Rps.Games.FsmTest do
   test "match info during the game", %{user1: user1, user2: user2} do
     match = Repo.insert! %Match{player1_id: user1.id, player2_id: user2.id}
 
-    {:ok, _pid} = Fsm.start_link(match.id, match_rounds: 3, round_timeout: 1000)
-    %{match: _, rounds: _} = Fsm.info(match.id)
-    assert {:ok, match} = Fsm.join(match.id, user2.id)
+    {:ok, _pid} = Fsm.start_link(match.id, match_rounds: 4, round_timeout: 500)
+    assert match = Fsm.info(match.id)
+    assert user1.id == match.player1_id
+    assert user2.id == match.player2_id
 
     :ok = :timer.sleep(1100)
-    %{match: _, rounds: _} = Fsm.info(match.id)
+    assert match = Fsm.info(match.id)
+    assert 2 == length(match.match_rounds)
 
     assert :ok == Fsm.stop match.id
   end

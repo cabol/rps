@@ -23,7 +23,7 @@ defmodule Rps.Games.Fsm do
   alias Rps.Games
   alias Rps.Games.Match
   alias Rps.Games.Round
-  alias Rps.Accounts.User
+  #alias Rps.Accounts.User
   alias Ecto.Changeset
 
   ## FSM default config
@@ -38,45 +38,39 @@ defmodule Rps.Games.Fsm do
 
   ## API
 
-  @spec start_link(integer, Keyword.t) :: {:ok, pid} | :ignore | {:error, any}
+  @spec start_link(integer, Keyword.t) :: {:ok, pid} | {:error, any}
   def start_link(match_id, opts \\ []) do
     match_id
     |> Games.get_match_with_rounds()
-    |> case do
-      nil ->
-        {:error, :match_not_found}
-      %Match{player1_id: nil} ->
-        {:error, :missing_player1}
-      match ->
-        case :gen_statem.start(__MODULE__, {match, Keyword.merge(@config, opts)}, []) do
-          {:ok, pid} ->
-            {_, ^pid} = Cache.set(match.id, {node(), pid})
-            {:ok, pid}
-          other ->
-            other
-        end
+    |> do_start_link(Keyword.merge(@config, opts))
+  end
+
+  defp do_start_link(nil, _opts),
+    do: {:error, :match_not_found}
+  defp do_start_link(%Match{player1_id: nil}, _opts),
+    do: {:error, :missing_player1}
+  defp do_start_link(match, opts) do
+    if match && length(match.match_rounds) < Keyword.get(opts, :match_rounds, 10) do
+      {:ok, pid} = :gen_statem.start_link(__MODULE__, {match, opts}, [])
+      {_, ^pid} = Cache.set(match.id, {node(), pid})
+      {:ok, pid}
+    else
+      {:error, :game_over}
     end
   end
 
-  @spec join(integer, integer) :: {:ok, Match.t} | {:error, any} | no_return
-  def join(match_id, player_id) do
-    User
-    |> Repo.get(player_id)
-    |> case do
-      nil -> {:error, :invalid_player}
-      val -> call(:join, [match_id, val])
-    end
+  @spec move(integer, integer, String.t) :: {:ok, String.t} | {:error, any}
+  def move(match_id, player_id, move)
+
+  def move(match_id, player_id, move) when move in @valid_moves do
+    call(:move, [match_id, player_id, move])
   end
 
-  @spec move(integer, integer, String.t) :: {:ok, String.t} | {:error, any} | no_return
-  def move(match_id, player, move) when move in @valid_moves do
-    call(:move, [match_id, player, move])
-  end
   def move(_, _, move) do
     {:error, {:invalid_move, move}}
   end
 
-  @spec info(integer) :: [Round.t] | no_return
+  @spec info(integer) :: Match.t
   def info(match_id) do
     call(:info, [match_id])
   end
@@ -95,13 +89,7 @@ defmodule Rps.Games.Fsm do
   def init({match, opts}) do
     _ = Process.flag(:trap_exit, true)
     data = %Data{match: match, rounds: match.match_rounds, opts: opts}
-
-    if match && length(match.match_rounds) < Keyword.get(opts, :match_rounds, 10) do
-      {:ok, :on_join, %{data | tref: set_round_timer(data)}}
-    else
-      # the match was played already, so stop the fsm
-      {:stop, :normal}
-    end
+    {:ok, :play, %{data | tref: set_round_timer(data)}}
   end
 
   @doc false
@@ -114,24 +102,14 @@ defmodule Rps.Games.Fsm do
 
   ## State callback(s)
 
-  @doc false
-  def on_join({:call, from}, {:join, player}, %Data{players: players, match: match} = data) do
-    match = %{match | player2_id: player.id}
-    data = %{data | match: match, players: [player | players], tref: set_round_timer(data)}
-    {:next_state, :play, data, [{:reply, from, {:ok, match}}]}
-  end
-  def on_join(event_type, event_content, data) do
-    handle_event(event_type, event_content, data)
-  end
-
-  @doc false
-  def play({:call, from}, {:move, player, move}, %Data{match: %Match{player1_id: p1, player2_id: p2}} = data) do
-    if player in [p1, p2] do
-      do_play(from, player, move, data)
+  def play({:call, from}, {:move, player_id, move}, %Data{match: %Match{player1_id: p1, player2_id: p2}} = data) do
+    if player_id in [p1, p2] do
+      do_play(from, player_id, move, data)
     else
-      {:next_state, :play, data, [{:reply, from, {:error, {:invalid_player, player}}}]}
+      {:next_state, :play, data, [{:reply, from, {:error, {:invalid_player, player_id}}}]}
     end
   end
+
   def play({:call, from}, :round_timeout, %Data{round: round} = data) do
     case round do
       [{:player1_move, _}] ->
@@ -143,12 +121,13 @@ defmodule Rps.Games.Fsm do
         do_play(from, data.match.player2_id, Enum.random(@valid_moves), data)
     end
   end
+
   def play(event_type, event_content, data) do
     handle_event(event_type, event_content, data)
   end
 
-  defp do_play(from, player, move, %Data{round: round, rounds: rounds, match: match, opts: opts} = data) do
-    player_key = player_key(player, match)
+  defp do_play(from, player_id, move, %Data{round: round, rounds: rounds, match: match, opts: opts} = data) do
+    player_key = player_key(player_id, match)
 
     case round do
       [] ->
@@ -172,18 +151,18 @@ defmodule Rps.Games.Fsm do
 
   ## Handle events common to all states
 
-  @doc false
   def handle_event({:call, from}, :info, %Data{match: match, rounds: rounds} = data) do
-    {:keep_state, data, [{:reply, from, %{match: match, rounds: rounds}}]}
+    {:keep_state, data, [{:reply, from, %{match | match_rounds: rounds}}]}
   end
+
   def handle_event(_, _, data) do
     {:keep_state, data}
   end
 
   ## Private Functions
 
-  defp player_key(player, %Match{player1_id: player}), do: :player1_move
-  defp player_key(player, %Match{player2_id: player}), do: :player2_move
+  defp player_key(player_id, %Match{player1_id: player_id}), do: :player1_move
+  defp player_key(player_id, %Match{player2_id: player_id}), do: :player2_move
 
   defp new_round(%Match{id: match_id} = match, moves) do
     moves
