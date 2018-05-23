@@ -25,9 +25,6 @@ defmodule Rps.Mixfile do
     ]
   end
 
-  defp elixirc_paths(:test), do: ["lib", "test/support"]
-  defp elixirc_paths(_),     do: ["lib"]
-
   defp deps do
     [
       {:phoenix, "~> 1.3.0"},
@@ -39,12 +36,18 @@ defmodule Rps.Mixfile do
       {:gettext, "~> 0.11"},
       {:cowboy, "~> 1.0"},
       {:nebulex, "~> 1.0.0-rc.3"},
+      {:guardian, "~> 1.0"},
+      {:comeonin, "~> 4.0"},
+      {:bcrypt_elixir, "~> 0.12"},
 
       # Test
       {:excoveralls, "~> 0.6", only: :test},
       {:mock, "~> 0.2", only: :test}
     ]
   end
+
+  defp elixirc_paths(:test), do: ["lib", "test/support"]
+  defp elixirc_paths(_),     do: ["lib"]
 
   defp aliases do
     [

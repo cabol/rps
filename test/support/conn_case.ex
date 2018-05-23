@@ -23,6 +23,25 @@ defmodule RpsWeb.ConnCase do
 
       # The default endpoint for testing
       @endpoint RpsWeb.Endpoint
+
+      def login(conn, username, password) do
+        case get_token(username, password) do
+          {:error, _} = error ->
+            error
+          %{"jwt" => jwt} ->
+            put_req_header(conn, "authorization", "Bearer " <> jwt)
+        end
+      end
+
+      def get_token(username, password) do
+        conn = put_req_header(build_conn(), "accept", "application/json")
+        req = %{user: %{username: username, password: password}}
+        conn = post(conn, session_path(conn, :login), req)
+        case conn.status do
+          200 -> json_response(conn, 200)["data"]
+          _   -> {:error, :unauthorized}
+        end
+      end
     end
   end
 
@@ -34,5 +53,4 @@ defmodule RpsWeb.ConnCase do
     end
     {:ok, conn: Phoenix.ConnTest.build_conn()}
   end
-
 end

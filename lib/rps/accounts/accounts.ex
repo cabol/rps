@@ -4,101 +4,77 @@ defmodule Rps.Accounts do
   """
 
   import Ecto.Query, warn: false
+
   alias Rps.Repo
-
   alias Rps.Accounts.User
+  alias Rps.Accounts.Auth.Login
+  alias Ecto.Changeset
+  alias Comeonin.Bcrypt
 
-  @doc """
-  Returns the list of users.
-
-  ## Examples
-
-      iex> list_users()
-      [%User{}, ...]
-
-  """
+  @doc false
   def list_users do
     Repo.all(User)
   end
 
-  @doc """
-  Gets a single user.
-
-  Raises `Ecto.NoResultsError` if the User does not exist.
-
-  ## Examples
-
-      iex> get_user!(123)
-      %User{}
-
-      iex> get_user!(456)
-      ** (Ecto.NoResultsError)
-
-  """
+  @doc false
   def get_user!(id), do: Repo.get!(User, id)
 
-  @doc """
-  Creates a user.
+  @doc false
+  def get_user(id), do: Repo.get(User, id)
 
-  ## Examples
+  @doc false
+  def get_user_by(clauses), do: Repo.get_by(User, clauses)
 
-      iex> create_user(%{field: value})
-      {:ok, %User{}}
-
-      iex> create_user(%{field: bad_value})
-      {:error, %Ecto.Changeset{}}
-
-  """
+  @doc false
   def create_user(attrs \\ %{}) do
     %User{}
     |> User.changeset(attrs)
     |> Repo.insert()
   end
 
-  @doc """
-  Updates a user.
-
-  ## Examples
-
-      iex> update_user(user, %{field: new_value})
-      {:ok, %User{}}
-
-      iex> update_user(user, %{field: bad_value})
-      {:error, %Ecto.Changeset{}}
-
-  """
+  @doc false
   def update_user(%User{} = user, attrs) do
     user
     |> User.changeset(attrs)
     |> Repo.update()
   end
 
-  @doc """
-  Deletes a User.
+  @doc false
+  def update_user!(%User{} = user, attrs) do
+    user
+    |> User.changeset(attrs)
+    |> Repo.update!()
+  end
 
-  ## Examples
-
-      iex> delete_user(user)
-      {:ok, %User{}}
-
-      iex> delete_user(user)
-      {:error, %Ecto.Changeset{}}
-
-  """
+  @doc false
   def delete_user(%User{} = user) do
     Repo.delete(user)
   end
 
-  @doc """
-  Returns an `%Ecto.Changeset{}` for tracking user changes.
-
-  ## Examples
-
-      iex> change_user(user)
-      %Ecto.Changeset{source: %User{}}
-
-  """
+  @doc false
   def change_user(%User{} = user) do
     User.changeset(user, %{})
+  end
+
+  @doc false
+  def authenticate_user(%{"username" => username, "password" => password} = params) do
+    case get_user_by(username: username) do
+      nil ->
+        changeset =
+          %Login{}
+          |> Login.changeset(params)
+          |> Changeset.add_error(:username, "notfound")
+        {:error, changeset}
+      user ->
+        if Bcrypt.checkpw(password, user.password) do
+          {:ok, user}
+        else
+          changeset =
+            %Login{}
+            |> Login.changeset(params)
+            |> Changeset.add_error(:password, "invalid")
+          {:error, changeset}
+        end
+    end
   end
 end

@@ -10,10 +10,14 @@ defmodule RpsWeb.RoundView do
     %{data: render_one(round, RoundView, "round.json")}
   end
 
+  def render("round.json", %{round: %{move: move}}),
+    do: %{move: move}
   def render("round.json", %{round: round}) do
-    %{id: round.id,
+    %{
+      num: round.num,
       player1_move: round.player1_move,
       player2_move: round.player2_move,
-      winner: round.winner}
+      winner: round.winner
+    }
   end
 end

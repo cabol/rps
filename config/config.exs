@@ -34,6 +34,11 @@ config :rps, Rps.Cache.Local,
   adapter: Nebulex.Adapters.Local,
   gc_interval: 3600
 
+# Guardian
+config :rps, Rps.Accounts.Auth.Guardian,
+  issuer: "rps",
+  secret_key: "my_secret_key"
+
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.
 import_config "#{Mix.env}.exs"

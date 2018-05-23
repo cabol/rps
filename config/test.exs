@@ -21,4 +21,4 @@ config :rps, Rps.Repo,
 # FSM
 config :rps, Rps.Games.Fsm,
   match_rounds: 3,
-  round_timeout: 2000
+  round_timeout: 1000

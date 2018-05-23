@@ -3,10 +3,11 @@ defmodule Rps.Accounts.User do
   import Ecto.Changeset
 
   schema "users" do
+    field :username, :string
+    field :password, Rps.EncryptedString
     field :alias, :string
     field :name, :string
-    field :password, :string
-    field :username, :string
+    field :wins, :integer, default: 0
 
     timestamps()
   end
@@ -14,7 +15,8 @@ defmodule Rps.Accounts.User do
   @doc false
   def changeset(user, attrs) do
     user
-    |> cast(attrs, [:username, :password, :name, :alias])
+    |> cast(attrs, [:username, :password, :name, :alias, :wins])
     |> validate_required([:username, :password])
+    |> unique_constraint(:username)
   end
 end

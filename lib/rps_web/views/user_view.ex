@@ -11,10 +11,12 @@ defmodule RpsWeb.UserView do
   end
 
   def render("user.json", %{user: user}) do
-    %{id: user.id,
+    %{
+      id: user.id,
       username: user.username,
-      password: user.password,
       name: user.name,
-      alias: user.alias}
+      alias: user.alias,
+      wins: user.wins
+    }
   end
 end

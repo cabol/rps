@@ -1,102 +1,135 @@
 defmodule RpsWeb.RoundControllerTest do
   use RpsWeb.ConnCase
 
-  alias Rps.Games
-  alias Rps.Repo
+  import Rps.Fixtures
+
   alias Rps.Games.Match
-  alias Rps.Accounts.User
-  alias Rps.Games.Round
-
-  @create_attrs %{match_id: nil, player1_move: "rock", player2_move: "rock", winner: "draw"}
-  @update_attrs %{player1_move: "paper", player2_move: "paper", winner: "draw"}
-  @invalid_attrs %{match_id: nil, player1_move: nil, player2_move: nil, winner: nil}
-
-  def users_fixture() do
-    user1 = Repo.insert!(%User{username: "cabol", password: "cabol"})
-    user2 = Repo.insert!(%User{username: "cabol", password: "cabol"})
-    {user1, user2}
-  end
-
-  def match_fixture() do
-    {user1, user2} = users_fixture()
-
-    %Match{}
-    |> Match.changeset(%{player1_id: user1.id, player2_id: user2.id})
-    |> Repo.insert!()
-  end
-
-  def fixture(:round) do
-    match = match_fixture()
-    {:ok, round} = Games.create_round(%{@create_attrs | match_id: match.id})
-    round
-  end
+  alias Rps.Games.Fsm
 
   setup %{conn: conn} do
     {:ok, conn: put_req_header(conn, "accept", "application/json")}
   end
 
   describe "index" do
-    test "lists all match_rounds", %{conn: conn} do
-      conn = get conn, round_path(conn, :index)
+    setup [:create_users, :create_match]
+
+    test "lists all match_rounds", %{conn: conn, match: match} do
+      conn =
+        conn
+        |> login("user1", "user1")
+        |> get(round_path(conn, :index, match))
       assert json_response(conn, 200)["data"] == []
+
+      :ok = Fsm.stop(match.id)
     end
   end
 
-  describe "create round" do
-    test "renders round when data is valid", %{conn: conn} do
-      match = match_fixture()
-      conn = post conn, round_path(conn, :create), round: %{@create_attrs | match_id: match.id}
-      assert %{"id" => id} = json_response(conn, 201)["data"]
+  describe "play round" do
+    setup [:create_users, :create_match]
 
-      conn = get conn, round_path(conn, :show, id)
-      assert json_response(conn, 200)["data"] == %{
+    test "renders round when data is valid", %{conn: conn, match: %Match{id: id} = match} do
+      conn1 =
+        conn
+        |> login("user2", "user2")
+        |> put(match_path(conn, :join, match), match: %{})
+      assert %{"id" => ^id} = json_response(conn1, 200)["data"]
+
+      conn2 =
+        conn
+        |> login("user1", "user1")
+        |> put(round_path(conn, :play, match), round: %{move: "rock"})
+      assert %{"move" => "rock"} == json_response(conn2, 200)["data"]
+
+      :ok = Fsm.stop(match.id)
+    end
+
+    test "renders errors when play is invalid", %{conn: conn, match: %Match{id: id} = match} do
+      conn1 =
+        conn
+        |> login("user2", "user2")
+        |> put(match_path(conn, :join, match), match: %{})
+      assert %{"id" => ^id} = json_response(conn1, 200)["data"]
+
+      conn2 =
+        conn
+        |> login("user1", "user1")
+        |> put(round_path(conn, :play, match), round: %{move: "invalid"})
+      assert json_response(conn2, 422)["errors"] != %{}
+
+      :ok = Fsm.stop(match.id)
+    end
+  end
+
+  describe "play full game" do
+    setup [:create_users, :create_match]
+
+    test "full game", %{conn: conn, match: %Match{id: id} = match, user1: user1, user2: user2} do
+      conn1 =
+        conn
+        |> login("user2", "user2")
+        |> put(match_path(conn, :join, match), match: %{})
+      assert %{"id" => ^id} = json_response(conn1, 200)["data"]
+
+      assert "rock" == play(conn, match, "user1", "rock")
+      assert "paper" == play(conn, match, "user2", "paper")
+
+      assert "rock" == play(conn, match, "user1", "rock")
+      assert "scissors" == play(conn, match, "user2", "scissors")
+
+      assert "paper" == play(conn, match, "user1", "paper")
+      assert "rock" == play(conn, match, "user2", "rock")
+
+      conn2 =
+        conn
+        |> login("user1", "user1")
+        |> get(match_path(conn, :show, id))
+
+      assert json_response(conn2, 200)["data"] == %{
         "id" => id,
-        "player1_move" => "rock",
-        "player2_move" => "rock",
-        "winner" => "draw"}
-    end
+        "player1_wins" => 2,
+        "player2_wins" => 1,
+        "winner" => "player1",
+        "player1_id" => user1.id,
+        "player2_id" => user2.id,
+        "status" => "finished",
+        "match_rounds" => [
+          %{
+            "num" => 3,
+            "player1_move" => "paper",
+            "player2_move" => "rock",
+            "winner" => "player1"
+          },
+          %{
+            "num" => 2,
+            "player1_move" => "rock",
+            "player2_move" => "scissors",
+            "winner" => "player1"
+          },
+          %{
+            "num" => 1,
+            "player1_move" => "rock",
+            "player2_move" => "paper",
+            "winner" => "player2"
+          }
+        ]
+      }
 
-    test "renders errors when data is invalid", %{conn: conn} do
-      conn = post conn, round_path(conn, :create), round: @invalid_attrs
-      assert json_response(conn, 422)["errors"] != %{}
-    end
-  end
+      conn3 =
+        conn
+        |> login("user2", "user2")
+        |> put(round_path(conn, :play, match), round: %{move: "paper"})
+      assert %{"errors" => %{}} = json_response(conn3, 404)
 
-  describe "update round" do
-    setup [:create_round]
-
-    test "renders round when data is valid", %{conn: conn, round: %Round{id: id} = round} do
-      conn = put conn, round_path(conn, :update, round), round: @update_attrs
-      assert %{"id" => ^id} = json_response(conn, 200)["data"]
-
-      conn = get conn, round_path(conn, :show, id)
-      assert json_response(conn, 200)["data"] == %{
-        "id" => id,
-        "player1_move" => "paper",
-        "player2_move" => "paper",
-        "winner" => "draw"}
-    end
-
-    test "renders errors when data is invalid", %{conn: conn, round: round} do
-      conn = put conn, round_path(conn, :update, round), round: @invalid_attrs
-      assert json_response(conn, 422)["errors"] != %{}
-    end
-  end
-
-  describe "delete round" do
-    setup [:create_round]
-
-    test "deletes chosen round", %{conn: conn, round: round} do
-      conn = delete conn, round_path(conn, :delete, round)
-      assert response(conn, 204)
-      assert_error_sent 404, fn ->
-        get conn, round_path(conn, :show, round)
-      end
+      :ok = Fsm.stop(match.id)
     end
   end
 
-  defp create_round(_) do
-    round = fixture(:round)
-    {:ok, round: round}
+  defp play(conn, match, user, move) do
+    conn
+    |> login(user, user)
+    |> put(round_path(conn, :play, match), round: %{move: move})
+    |> json_response(200)
+    |> Map.fetch!("data")
+    |> Map.fetch!("move")
   end
 end

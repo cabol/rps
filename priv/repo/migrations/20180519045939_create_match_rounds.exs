@@ -6,7 +6,8 @@ defmodule Rps.Repo.Migrations.CreateMatchRounds do
       add :player1_move, :string
       add :player2_move, :string
       add :winner, :string
-      add :match_id, references(:match_games, on_delete: :nothing)
+      add :num, :integer
+      add :match_id, references(:match_games, on_delete: :delete_all)
 
       timestamps()
     end

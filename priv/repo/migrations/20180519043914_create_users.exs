@@ -7,9 +7,11 @@ defmodule Rps.Repo.Migrations.CreateUsers do
       add :password, :string
       add :name, :string
       add :alias, :string
+      add :wins, :integer
 
       timestamps()
     end
 
+    create unique_index(:users, [:username])
   end
 end

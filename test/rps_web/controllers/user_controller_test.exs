@@ -4,9 +4,9 @@ defmodule RpsWeb.UserControllerTest do
   alias Rps.Accounts
   alias Rps.Accounts.User
 
-  @create_attrs %{alias: "some alias", name: "some name", password: "some password", username: "some username"}
-  @update_attrs %{alias: "some updated alias", name: "some updated name", password: "some updated password", username: "some updated username"}
-  @invalid_attrs %{alias: nil, name: nil, password: nil, username: nil}
+  @create_attrs %{alias: "some alias", name: "some name", password: "test", username: "test"}
+  @update_attrs %{alias: "some updated alias", name: "some updated name", username: "some updated username"}
+  @invalid_attrs %{alias: nil, name: -1, username: nil}
 
   def fixture(:user) do
     {:ok, user} = Accounts.create_user(@create_attrs)
@@ -18,24 +18,33 @@ defmodule RpsWeb.UserControllerTest do
   end
 
   describe "index" do
+    setup [:create_user]
+
     test "lists all users", %{conn: conn} do
-      conn = get conn, user_path(conn, :index)
-      assert json_response(conn, 200)["data"] == []
+      conn =
+        conn
+        |> login("test", "test")
+        |> get(user_path(conn, :index))
+      assert length(json_response(conn, 200)["data"]) == 1
     end
   end
 
   describe "create user" do
     test "renders user when data is valid", %{conn: conn} do
-      conn = post conn, user_path(conn, :create), user: @create_attrs
-      assert %{"id" => id} = json_response(conn, 201)["data"]
+      conn1 = post conn, user_path(conn, :create), user: @create_attrs
+      assert %{"id" => id} = json_response(conn1, 201)["data"]
 
-      conn = get conn, user_path(conn, :show, id)
-      assert json_response(conn, 200)["data"] == %{
+      conn2 =
+        conn
+        |> login("test", "test")
+        |> get(user_path(conn, :show, id))
+
+      assert json_response(conn2, 200)["data"] == %{
         "id" => id,
         "alias" => "some alias",
         "name" => "some name",
-        "password" => "some password",
-        "username" => "some username"}
+        "username" => "test",
+        "wins" => 0}
     end
 
     test "renders errors when data is invalid", %{conn: conn} do
@@ -47,21 +56,32 @@ defmodule RpsWeb.UserControllerTest do
   describe "update user" do
     setup [:create_user]
 
-    test "renders user when data is valid", %{conn: conn, user: %User{id: id} = user} do
-      conn = put conn, user_path(conn, :update, user), user: @update_attrs
-      assert %{"id" => ^id} = json_response(conn, 200)["data"]
+    test "renders user when data is valid", %{conn: conn, user: %User{id: id}} do
+      conn1 =
+        conn
+        |> login("test", "test")
+        |> put(user_path(conn, :update), user: @update_attrs)
 
-      conn = get conn, user_path(conn, :show, id)
-      assert json_response(conn, 200)["data"] == %{
+      assert %{"id" => ^id} = json_response(conn1, 200)["data"]
+
+      conn2 =
+        conn
+        |> login("test", "test")
+        |> get(user_path(conn, :show, id))
+
+      assert json_response(conn2, 200)["data"] == %{
         "id" => id,
         "alias" => "some updated alias",
         "name" => "some updated name",
-        "password" => "some updated password",
-        "username" => "some updated username"}
+        "username" => "test",
+        "wins" => 0}
     end
 
-    test "renders errors when data is invalid", %{conn: conn, user: user} do
-      conn = put conn, user_path(conn, :update, user), user: @invalid_attrs
+    test "renders errors when data is invalid", %{conn: conn} do
+      conn =
+        conn
+        |> login("test", "test")
+        |> put(user_path(conn, :update), user: @invalid_attrs)
       assert json_response(conn, 422)["errors"] != %{}
     end
   end
@@ -69,12 +89,13 @@ defmodule RpsWeb.UserControllerTest do
   describe "delete user" do
     setup [:create_user]
 
-    test "deletes chosen user", %{conn: conn, user: user} do
-      conn = delete conn, user_path(conn, :delete, user)
-      assert response(conn, 204)
-      assert_error_sent 404, fn ->
-        get conn, user_path(conn, :show, user)
-      end
+    test "deletes chosen user", %{conn: conn} do
+      conn1 =
+        conn
+        |> login("test", "test")
+        |> delete(user_path(conn, :delete))
+      assert response(conn1, 204)
+      assert {:error, :unauthorized} == get_token("test", "test")
     end
   end
 

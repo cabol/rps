@@ -23,7 +23,7 @@ defmodule Rps.Games.Fsm do
   alias Rps.Games
   alias Rps.Games.Match
   alias Rps.Games.Round
-  #alias Rps.Accounts.User
+  alias Rps.Accounts
   alias Ecto.Changeset
 
   ## FSM default config
@@ -33,7 +33,7 @@ defmodule Rps.Games.Fsm do
   @valid_moves ["rock", "paper", "scissors"]
 
   defmodule Data do
-    defstruct [:match, tref: nil, opts: [], round: [], rounds: [], players: []]
+    defstruct [:match, :tref, :winner, opts: [], round: [], rounds: [], players: []]
   end
 
   ## API
@@ -46,7 +46,7 @@ defmodule Rps.Games.Fsm do
   end
 
   defp do_start_link(nil, _opts),
-    do: {:error, :match_not_found}
+    do: {:error, :not_found}
   defp do_start_link(%Match{player1_id: nil}, _opts),
     do: {:error, :missing_player1}
   defp do_start_link(match, opts) do
@@ -75,12 +75,14 @@ defmodule Rps.Games.Fsm do
     call(:info, [match_id])
   end
 
-  @spec stop(integer) :: :ok | no_return
+  @spec stop(integer) :: :ok
   def stop(match_id) do
     match_id
-    |> Cache.get!()
-    |> elem(1)
-    |> :gen_statem.stop()
+    |> Cache.get()
+    |> case do
+      {_, pid} -> :gen_statem.stop(pid)
+      nil      -> :ok
+    end
   end
 
   ## Mandatory callback functions
@@ -89,7 +91,7 @@ defmodule Rps.Games.Fsm do
   def init({match, opts}) do
     _ = Process.flag(:trap_exit, true)
     data = %Data{match: match, rounds: match.match_rounds, opts: opts}
-    {:ok, :play, %{data | tref: set_round_timer(data)}}
+    {:ok, :play, set_round_timer(data)}
   end
 
   @doc false
@@ -126,7 +128,7 @@ defmodule Rps.Games.Fsm do
     handle_event(event_type, event_content, data)
   end
 
-  defp do_play(from, player_id, move, %Data{round: round, rounds: rounds, match: match, opts: opts} = data) do
+  defp do_play(from, player_id, move, %Data{round: round, match: match} = data) do
     player_key = player_key(player_id, match)
 
     case round do
@@ -136,15 +138,17 @@ defmodule Rps.Games.Fsm do
       [{^player_key, prev_move}] ->
         {:next_state, :play, data, [{:reply, from, {:ok, prev_move}}]}
       [prev_move] ->
-        tref = set_round_timer(data)
-        {new_round, match} = new_round(match, [prev_move, {player_key, move}])
-        data = %{data | round: [], rounds: [new_round | rounds], match: match, tref: tref}
-
-        if length(data.rounds) >= Keyword.get(opts, :match_rounds, 10) do
-          # game over, stop the fsm
-          {:stop_and_reply, :normal, [{:reply, from, {:ok, move}}], data}
-        else
-          {:next_state, :play, data, [{:reply, from, {:ok, move}}]}
+        %{data | round: []}
+        |> set_round_timer()
+        |> new_round([prev_move, {player_key, move}])
+        |> maybe_update_match()
+        |> case do
+          %Data{match: %Match{status: "finished"}} = data ->
+            # game over, update user wins and stop the fsm
+            data = maybe_update_user_wins(data)
+            {:stop_and_reply, :normal, [{:reply, from, {:ok, move}}], data}
+          data ->
+            {:next_state, :play, data, [{:reply, from, {:ok, move}}]}
         end
     end
   end
@@ -164,43 +168,57 @@ defmodule Rps.Games.Fsm do
   defp player_key(player_id, %Match{player1_id: player_id}), do: :player1_move
   defp player_key(player_id, %Match{player2_id: player_id}), do: :player2_move
 
-  defp new_round(%Match{id: match_id} = match, moves) do
-    moves
-    |> Enum.reduce(%Round{match_id: match_id}, fn({player_move, move}, acc) ->
-      %{acc | player_move => move}
-    end)
-    |> pick_winner()
-    |> Repo.insert!()
-    |> update_match_results(match)
+  defp new_round(%Data{match: %Match{id: match_id}, rounds: rounds} = data, moves) do
+    round =
+      moves
+      |> Enum.reduce(%Round{match_id: match_id, num: length(rounds) + 1}, fn({player_move, move}, acc) ->
+        %{acc | player_move => move}
+      end)
+      |> update_round_winner()
+      |> Repo.insert!()
+    %{data | rounds: [round | rounds]}
   end
 
-  defp pick_winner(%Round{player1_move: "rock", player2_move: "paper"} = round),
+  defp update_round_winner(%Round{player1_move: "rock", player2_move: "paper"} = round),
     do: Round.changeset(round, %{winner: "player2"})
-  defp pick_winner(%Round{player1_move: "paper", player2_move: "rock"} = round),
+  defp update_round_winner(%Round{player1_move: "paper", player2_move: "rock"} = round),
     do: Round.changeset(round, %{winner: "player1"})
-  defp pick_winner(%Round{player1_move: "rock", player2_move: "scissors"} = round),
+  defp update_round_winner(%Round{player1_move: "rock", player2_move: "scissors"} = round),
     do: Round.changeset(round, %{winner: "player1"})
-  defp pick_winner(%Round{player1_move: "scissors", player2_move: "rock"} = round),
+  defp update_round_winner(%Round{player1_move: "scissors", player2_move: "rock"} = round),
     do: Round.changeset(round, %{winner: "player2"})
-  defp pick_winner(%Round{player1_move: "paper", player2_move: "scissors"} = round),
+  defp update_round_winner(%Round{player1_move: "paper", player2_move: "scissors"} = round),
     do: Round.changeset(round, %{winner: "player2"})
-  defp pick_winner(%Round{player1_move: "scissors", player2_move: "paper"} = round),
+  defp update_round_winner(%Round{player1_move: "scissors", player2_move: "paper"} = round),
     do: Round.changeset(round, %{winner: "player1"})
-  defp pick_winner(%Round{player1_move: same, player2_move: same} = round),
+  defp update_round_winner(%Round{player1_move: same, player2_move: same} = round),
     do: Round.changeset(round, %{winner: "draw"})
 
-  defp update_match_results(%Round{winner: "draw"} = round, match),
-    do: {round, match}
-  defp update_match_results(%Round{winner: winner} = round, match) do
-    # perhaps the update of the match can be done at the end of the game,
-    # in this case for the exercise, it is being updated every time
-    # a round is completed
-    key = String.to_atom("#{winner}_wins")
-    match = update_match(match, %{key => Map.get(match, key, 0) + 1})
-    {round, match}
+  # perhaps the update of the match can be done at the end of the game,
+  # in this case for the exercise, it is being updated every time
+  # a round is completed
+  defp maybe_update_match(%Data{rounds: [current_round | _] = rounds, match: match, opts: opts} = data) do
+    match =
+      %{}
+      |> maybe_update_match_results(current_round, match)
+      |> maybe_update_match_status(rounds, Keyword.get(opts, :match_rounds, 10))
+      |> update_match(match)
+    %{data | match: match}
   end
 
-  defp update_match(match, attrs) do
+  defp maybe_update_match_results(acc, %Round{winner: "draw"}, _match),
+    do: acc
+  defp maybe_update_match_results(acc, %Round{winner: winner}, match) do
+    key = String.to_atom("#{winner}_wins")
+    Map.put(acc, key, Map.get(match, key, 0) + 1)
+  end
+
+  defp maybe_update_match_status(acc, rounds, max_rounds) when length(rounds) >= max_rounds,
+    do: Map.put(acc, :status, "finished")
+  defp maybe_update_match_status(acc, _rounds, _max_rounds),
+    do: acc
+
+  defp update_match(attrs, match) do
     match
     |> Match.changeset(attrs)
     |> update_match_winner()
@@ -221,13 +239,25 @@ defmodule Rps.Games.Fsm do
     end
   end
 
-  defp set_round_timer(%Data{tref: tref, opts: opts}) do
+  defp maybe_update_user_wins(%Data{match: %Match{winner: "draw"}} = data),
+    do: data
+  defp maybe_update_user_wins(%Data{match: %Match{winner: winner} = match} = data) do
+    user =
+      match
+      |> Map.fetch!(String.to_atom("#{winner}_id"))
+      |> Accounts.get_user!()
+    %{data | winner: Accounts.update_user!(user, %{wins: user.wins + 1})}
+  end
+
+  defp set_round_timer(%Data{tref: tref, opts: opts} = data) do
     _ = :timer.cancel(tref)
+
     {:ok, tref} =
       opts
       |> Keyword.get(:round_timeout, 10000)
       |> :timer.apply_after(:gen_statem, :call, [self(), :round_timeout])
-    tref
+
+    %{data | tref: tref}
   end
 
   defp call(fun, [match_id | args]) do
@@ -235,7 +265,7 @@ defmodule Rps.Games.Fsm do
     |> Cache.get()
     |> case do
       nil ->
-        {:error, :invalid_match}
+        {:error, :not_found}
       {node, pid} ->
         args =
           case args do

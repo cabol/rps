@@ -6,6 +6,7 @@ defmodule Rps.Repo.Migrations.CreateMatchGames do
       add :player1_wins, :integer
       add :player2_wins, :integer
       add :winner, :string
+      add :status, :string
       add :player1_id, references(:users, on_delete: :nothing)
       add :player2_id, references(:users, on_delete: :nothing)
 
