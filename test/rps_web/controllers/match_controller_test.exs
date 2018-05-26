@@ -78,7 +78,14 @@ defmodule RpsWeb.MatchControllerTest do
         "match_rounds" => [],
         "player1_id" => user1.id,
         "player2_id" => user2.id,
-        "status" => "created"}
+        "status" => "started"}
+
+      conn3 =
+        conn
+        |> login("user2", "user2")
+        |> put(match_path(conn, :join, match), match: @update_attrs)
+
+      assert json_response(conn3, 422)["errors"] != %{}
 
       :ok = Fsm.stop(match.id)
     end

@@ -49,10 +49,19 @@ defmodule Rps.Games do
   end
 
   @doc false
-  def delete_match(%Match{status: "created"} = match) do
-    #IO.inspect match
-    Repo.delete(match)
+  def join_match(%Match{status: "created"} = match, attrs),
+    do: update_match(match, attrs)
+  def join_match(%Match{status: status} = match, _attrs) do
+    changeset =
+      match
+      |> Changeset.change(%{})
+      |> Changeset.add_error(:status, "cannot be #{status}")
+    {:error, changeset}
   end
+
+  @doc false
+  def delete_match(%Match{status: "created"} = match),
+    do: Repo.delete(match)
   def delete_match(%Match{status: status} = match) do
     changeset =
       match

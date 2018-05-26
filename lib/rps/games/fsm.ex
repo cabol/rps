@@ -1,7 +1,8 @@
 defmodule Rps.Games.Fsm do
   @moduledoc """
-  This module uses `gen_statem` behaviour to implement a match game session,
-  this state machine manage the game logic between two opponents.
+  This is the main component, since it is the one that handles the logic
+  of the game (the match game session). It is implemented as a FSM and
+  uses `gen_statem` behaviour.
 
   The FSM works in distributed fashion, when a new game session is created,
   the local `pid` and `node` are cached and associated to the `match_id`,
@@ -11,9 +12,43 @@ defmodule Rps.Games.Fsm do
   In the case the game is located in the same node where the FSM is being
   called, the function is invoked locally, no RPC calls are involved.
   On other hand, if the node is not the local, then the FSM function
-  is invoked using `:rpc` module.
+  is invoked using `:rpc` module. For the cache, `Nebulex` library is
+  being used.
 
-  NOTE: For the cache, `Nebulex` library is being used.
+  ## Options
+
+    * `:match_rounds` - max number of rounds per match. Default is `10`.
+
+    * `:round_timeout` - timeout per round. Default is `10000`.
+
+  ## FSM Logic
+
+    * Once the FSM starts, the `round_timeout` is set as well and the first
+      round is initiated.
+
+    * During that period of time the players are able to do their moves.
+      If both players give their moves, then a new round is created in the DB,
+      the state is updated and a notification with the round info is sent to
+      the players via Phoenix Channels. On other hand, ff the timeout expires
+      before, the move is chosen randomicaly for the player(s) and the round
+      is created, state is updated and notification is sent.
+
+    * During each round the match is also being updated in the DB with the
+      results and winner.
+
+    * When the max rounds is reached (given by `match_rounds`), the last round
+      is created and the match is updated in the DB. If there is a winner,
+      the user is updated, the `wins` field is incremented by one. Besides,
+      the leaderboard is updated and the notifications are sent (the one about
+      the last round and additionally the match result).
+
+    * Finally, the FSM finishes normally.
+
+  > **NOTE:** For purpose of the exercise, everything is being stored in
+    the DB using `Ecto`, except the leaderboard since it was required to be
+    implemented using ETS tables. However, the informations about the rounds
+    and match can be stored in memory, using the FSM state, or using a Cache,
+    Mnesia, etc.
   """
 
   @behaviour :gen_statem
@@ -145,8 +180,12 @@ defmodule Rps.Games.Fsm do
         |> maybe_update_match()
         |> case do
           %Data{match: %Match{status: "finished"}} = data ->
-            # game over, update user wins and stop the fsm
+            # Game over, then:
+            #   * update user wins
+            #   * send notifications using phoenix channels
+            #   * stop the fsm
             data = maybe_update_user_wins(data)
+            _ = push(data.match, data.match.id, "match_finished")
             {:stop_and_reply, :normal, [{:reply, from, {:ok, move}}], data}
           data ->
             {:next_state, :play, data, [{:reply, from, {:ok, move}}]}
@@ -177,6 +216,7 @@ defmodule Rps.Games.Fsm do
       end)
       |> update_round_winner()
       |> Repo.insert!()
+      |> push(match_id, "round_finished")
     %{data | rounds: [round | rounds]}
   end
 
@@ -250,6 +290,14 @@ defmodule Rps.Games.Fsm do
 
     :ok = Leaderboard.update_player_score(user.username, user.wins + 1)
     %{data | winner: Accounts.update_user!(user, %{wins: user.wins + 1})}
+  end
+
+  # Phoenix Channel notifications (WebSocket)
+  defp push(data, sub_topic, event) do
+    topic = "room:#{sub_topic}"
+    message = Map.drop(data, [:__meta__, :__struct__, :match, :inserted_at, :updated_at, :player1, :player1])
+    _ = RpsWeb.Endpoint.broadcast(topic, event, message)
+    data
   end
 
   defp set_round_timer(%Data{tref: tref, opts: opts} = data) do

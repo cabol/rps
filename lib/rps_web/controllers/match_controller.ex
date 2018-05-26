@@ -23,11 +23,11 @@ defmodule RpsWeb.MatchController do
   end
 
   def join(conn, %{"id" => id}) do
-    match = %{Games.get_match!(id) | status: "started"}
+    match = Games.get_match!(id)
     logged_user = Guardian.Plug.current_resource(conn)
-    match_params = %{player2_id: logged_user.id}
+    match_params = %{player2_id: logged_user.id, status: "started"}
 
-    with {:ok, %Match{} = match} <- Games.update_match(match, match_params),
+    with {:ok, %Match{} = match} <- Games.join_match(match, match_params),
          {:ok, _pid} <- GameFsm.start_child(match.id) do
       render(conn, "show.json", match: match)
     end

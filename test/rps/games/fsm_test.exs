@@ -6,7 +6,6 @@ defmodule Rps.Games.FsmTest do
   alias Rps.Accounts.User
   alias Rps.Games.Match
   alias Rps.Games.Fsm
-  #alias Rps.Games.Fsm.Supervisor, as: FsmSupervisor
 
   setup do
     users = [

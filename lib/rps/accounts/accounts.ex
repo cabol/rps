@@ -77,4 +77,14 @@ defmodule Rps.Accounts do
         end
     end
   end
+
+  @doc false
+  def authenticate_user(_params) do
+    changeset =
+      %Login{}
+      |> Login.changeset(%{})
+      |> Changeset.add_error(:username, "missing or invalid")
+      |> Changeset.add_error(:password, "missing or invalid")
+    {:error, changeset}
+  end
 end

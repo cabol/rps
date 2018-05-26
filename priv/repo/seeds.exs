@@ -12,16 +12,19 @@
 
 alias Rps.Repo
 alias Rps.Accounts.User
-alias Comeonin.Bcrypt
 
 users = [
   %User{
-    username: "cabol",
-    password: Bcrypt.hashpwsalt("cabol")
+    username: "admin",
+    password: "admin"
   },
   %User{
-    username: "admin",
-    password: Bcrypt.hashpwsalt("admin")
+    username: "user1",
+    password: "user1"
+  },
+  %User{
+    username: "user2",
+    password: "user2"
   }
 ]
 
