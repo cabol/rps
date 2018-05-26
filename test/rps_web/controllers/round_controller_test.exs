@@ -5,6 +5,7 @@ defmodule RpsWeb.RoundControllerTest do
 
   alias Rps.Games.Match
   alias Rps.Games.Fsm
+  alias Rps.Games.Leaderboard
 
   setup %{conn: conn} do
     {:ok, conn: put_req_header(conn, "accept", "application/json")}
@@ -64,6 +65,8 @@ defmodule RpsWeb.RoundControllerTest do
     setup [:create_users, :create_match]
 
     test "full game", %{conn: conn, match: %Match{id: id} = match, user1: user1, user2: user2} do
+      :ok = Leaderboard.flush()
+
       conn1 =
         conn
         |> login("user2", "user2")
@@ -84,15 +87,19 @@ defmodule RpsWeb.RoundControllerTest do
         |> login("user1", "user1")
         |> get(match_path(conn, :show, id))
 
-      assert json_response(conn2, 200)["data"] == %{
-        "id" => id,
+      %{
+        "id" => ^id,
         "player1_wins" => 2,
         "player2_wins" => 1,
         "winner" => "player1",
-        "player1_id" => user1.id,
-        "player2_id" => user2.id,
+        "player1_id" => user1_id,
+        "player2_id" => user2_id,
         "status" => "finished",
-        "match_rounds" => [
+        "match_rounds" => match_rounds
+      } = json_response(conn2, 200)["data"]
+
+      expected_match_rounds =
+        :lists.usort([
           %{
             "num" => 3,
             "player1_move" => "paper",
@@ -111,14 +118,23 @@ defmodule RpsWeb.RoundControllerTest do
             "player2_move" => "paper",
             "winner" => "player2"
           }
-        ]
-      }
+        ])
+
+      assert user1.id == user1_id
+      assert user2.id == user2_id
+      assert expected_match_rounds == :lists.usort(match_rounds)
 
       conn3 =
         conn
         |> login("user2", "user2")
         |> put(round_path(conn, :play, match), round: %{move: "paper"})
       assert %{"errors" => %{}} = json_response(conn3, 404)
+
+      conn4 =
+        conn
+        |> login("user1", "user1")
+        |> get(leaderboard_path(conn, :show))
+      assert json_response(conn4, 200)["data"] == [%{"1" => ["user1"]}]
 
       :ok = Fsm.stop(match.id)
     end

@@ -71,9 +71,10 @@ defmodule Rps.Games.FsmTest do
     assert 4 == match.player1_wins
     assert 2 == match.player2_wins
     assert 9 == length(match.match_rounds)
-    for {round, num} <- List.zip([match.match_rounds, (for x <- 9..1, do: x)]) do
-      assert num == round.num
-    end
+
+    # check round num
+    match_rounds = for round <- match.match_rounds, do: round.num
+    assert [] == match_rounds -- (for x <- 9..1, do: x)
 
     # check user wins
     assert 1 == Accounts.get_user!(user1.id).wins

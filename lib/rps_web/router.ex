@@ -41,5 +41,8 @@ defmodule RpsWeb.Router do
     # Match Rounds
     put "/match_games/:match_id/match_rounds", RoundController, :play
     get "/match_games/:match_id/match_rounds", RoundController, :index
+
+    # Leaderboard
+    get "/leaderboard", LeaderboardController, :show
   end
 end

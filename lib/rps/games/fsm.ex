@@ -23,6 +23,7 @@ defmodule Rps.Games.Fsm do
   alias Rps.Games
   alias Rps.Games.Match
   alias Rps.Games.Round
+  alias Rps.Games.Leaderboard
   alias Rps.Accounts
   alias Ecto.Changeset
 
@@ -87,19 +88,19 @@ defmodule Rps.Games.Fsm do
 
   ## Mandatory callback functions
 
-  @doc false
+  @impl true
   def init({match, opts}) do
     _ = Process.flag(:trap_exit, true)
     data = %Data{match: match, rounds: match.match_rounds, opts: opts}
     {:ok, :play, set_round_timer(data)}
   end
 
-  @doc false
+  @impl true
   def terminate(_reason, _state, %Data{match: %Match{id: match_id}}) do
     Cache.delete(match_id)
   end
 
-  @doc false
+  @impl true
   def callback_mode, do: :state_functions
 
   ## State callback(s)
@@ -246,6 +247,8 @@ defmodule Rps.Games.Fsm do
       match
       |> Map.fetch!(String.to_atom("#{winner}_id"))
       |> Accounts.get_user!()
+
+    :ok = Leaderboard.update_player_score(user.username, user.wins + 1)
     %{data | winner: Accounts.update_user!(user, %{wins: user.wins + 1})}
   end
 

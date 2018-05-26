@@ -19,7 +19,10 @@ defmodule Rps.Application do
       supervisor(Rps.Games.Fsm.Supervisor, []),
 
       # Phoenix
-      supervisor(RpsWeb.Endpoint, [])
+      supervisor(RpsWeb.Endpoint, []),
+
+      # Leaderboard GenServer
+      worker(Rps.Games.Leaderboard, [])
     ]
 
     opts = [strategy: :one_for_one, name: Rps.Supervisor]
