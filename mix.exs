@@ -14,7 +14,15 @@ defmodule Rps.Mixfile do
 
       # Testing
       test_coverage: [tool: ExCoveralls],
-      preferred_cli_env: ["coveralls": :test, "coveralls.detail": :test, "coveralls.post": :test, "coveralls.html": :test]
+      preferred_cli_env: ["coveralls": :test, "coveralls.detail": :test, "coveralls.post": :test, "coveralls.html": :test],
+
+      # Docs
+      name: "Rps",
+      source_url: "https://github.com/cabol/rps",
+      docs: [
+        main: "Rps",
+        extras: ["README.md"]
+      ]
     ]
   end
 
@@ -42,7 +50,10 @@ defmodule Rps.Mixfile do
 
       # Test
       {:excoveralls, "~> 0.6", only: :test},
-      {:mock, "~> 0.2", only: :test}
+      {:mock, "~> 0.2", only: :test},
+
+      # Docs
+      {:ex_doc, "~> 0.17", only: :dev, runtime: false}
     ]
   end
 

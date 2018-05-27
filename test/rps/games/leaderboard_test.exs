@@ -10,7 +10,7 @@ defmodule Rps.Games.LeaderboardTest do
     assert [] == Leaderboard.ranking()
 
     for {user, score} <- [{"a", 3}, {"b", 5}, {"c", 10}, {"d", 5}, {"e", 10}] do
-      assert :ok == Rps.Games.Leaderboard.update_player_score user, score
+      assert :ok == Leaderboard.update_player_score user, score
     end
 
     assert [
@@ -19,9 +19,9 @@ defmodule Rps.Games.LeaderboardTest do
       {3, ["a"]}
     ] == Leaderboard.ranking()
 
-    assert :ok == Rps.Games.Leaderboard.update_player_score "a", 11, 3
+    assert :ok == Leaderboard.update_player_score "a", 11, 3
     for {user, score} <- [{"f", 3}, {"g", 5}, {"b", 6}] do
-      assert :ok == Rps.Games.Leaderboard.update_player_score user, score
+      assert :ok == Leaderboard.update_player_score user, score
     end
 
     assert [

@@ -52,6 +52,18 @@ $ MIX_ENV=test mix coveralls.html
 
 And to see the coverage result you can open `cover/excoveralls.html`
 
+## Generating Doc
+
+This project uses `ex_doc` to generate the web documentation, you have to run
+this command:
+
+```
+$ mix docs
+```
+
+As result, a folder `doc` is created with all doc inside, so you can open the
+generated doc using your browser (`doc/index.html`).
+
 ## Getting started
 
 In order to understand how the app works, let's play!
@@ -193,7 +205,53 @@ Result:
 }
 ```
 
-### Getting info
+### Leaderboard
+
+To get the leaderboard:
+
+```
+$ curl -X GET \
+  http://localhost:4000/api/v1/leaderboard \
+  -H 'authorization: Bearer eyJhbGciOiJIUzUxMiIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJycHMiLCJleHAiOjE1Mjk1NzgxMTgsImlhdCI6MTUyNzE1ODkxOCwiaXNzIjoicnBzIiwianRpIjoiNzdlNTRkYWYtNmMyMi00YTU5LWE5OTMtODA5MDQwZThiODczIiwibmJmIjoxNTI3MTU4OTE3LCJzdWIiOiIyIiwidHlwIjoiYWNjZXNzIn0.TGl0c0QtK8zu_YHjkdt70duUS39ELp64dyNlng9OWQNf7y9Yg2BE5fs_mYzPz5NwZK_N4AiewFzXS6lTiCQzpA'
+```
+
+Response:
+
+```
+{
+  "data": [
+    {
+      "11": [
+        "cabol"
+      ]
+    },
+    {
+      "10": [
+        "alice",
+        "bob"
+      ]
+    },
+    {
+      "6": [
+        "tom"
+      ]
+    },
+    {
+      "5": [
+        "john",
+        "elixir123"
+      ]
+    },
+    {
+      "3": [
+        "other_username"
+      ]
+    }
+  ]
+}
+```
+
+### Getting info about a match
 
 It is possible also to get info about a match:
 

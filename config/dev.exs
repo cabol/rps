@@ -51,7 +51,7 @@ config :phoenix, :stacktrace_depth, 20
 config :rps, Rps.Repo,
   adapter: Ecto.Adapters.Postgres,
   username: "postgres",
-  password: "password",
+  password: "postgres",
   database: "rps_dev",
   hostname: "localhost",
   pool_size: 10

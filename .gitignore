@@ -25,6 +25,7 @@ erl_crash.dump
 
 # Cover
 /cover
+/doc
 
 # Mac
 .DS_Store

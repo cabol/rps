@@ -4,6 +4,12 @@ defmodule Rps.Games.Fsm do
   of the game (the match game session). It is implemented as a FSM and
   uses `gen_statem` behaviour.
 
+  The FSM instances are supervised by `Rps.Games.Fsm.Supervisor`. This
+  supervisor implements a `:simple_one_for_one` strategy, so the FSM instances
+  are added and deleted dynamically (on-demand); which is the desired behavious,
+  since the FSMs will be created when a new game is ready to be started and will
+  be deleted once the game finishes.
+
   The FSM works in distributed fashion, when a new game session is created,
   the local `pid` and `node` are cached and associated to the `match_id`,
   which acts as key. The distribued cache acts as registry (or name server)
